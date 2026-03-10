@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI-Powered Intelligent Pack Design</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <h1>
+          <span class="title-ai-orb" aria-hidden="true"></span>
+          <span>AI-Powered Intelligent Pack Design</span>
+        </h1>
+        <div class="top-actions">
+          <button id="intelligenceHubBtn" class="btn secondary" type="button">Intelligence Hub</button>
+          <div class="logo-slot" aria-label="Company logo">
+            <img
+              src="/static/images/logo.jpg"
+              alt="Logo"
+              onerror="this.style.visibility='hidden';"
+            />
+          </div>
+          <button id="openKeyModalBtn" class="icon-btn" type="button" title="Manage API Key" aria-label="Manage API Key">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M14 4a6 6 0 1 0 4.24 10.24L22 18v2h-2v-2h-2v-2h-1.17A6 6 0 0 0 14 4zm0 2a4 4 0 1 1 0 8 4 4 0 0 1 0-8z"></path>
+            </svg>
+          </button>
+          <span id="keyStateBadge" class="key-state">Key: Not Set</span>
+          <div id="stepBadge" class="step-badge">Workflow Step: 1</div>
+        </div>
+      </header>
+
+      <nav class="screen-tabs">
+        <button id="tab1" class="tab active" type="button">1. Requirements & Baseline</button>
+        <button id="tab2" class="tab" type="button">2. Edit Studio</button>
+        <button id="tab3" class="tab" type="button">3. CAD Diagram</button>
+        <button id="tab4" class="tab" type="button">4. Approve & 3D</button>
+        <button id="tab5" class="tab" type="button">5. Assets DB</button>
+      </nav>
+
+      <main>
+        <section id="screen1" class="screen active">
+          <div class="two-col">
+            <div class="card">
+              <h2>Requirements Refinement</h2>
+              <details class="spec-panel" open>
+                <summary>Design Spec</summary>
+                <p id="specSummary">No specs collected yet.</p>
+              </details>
+              <div id="missingInfo" class="missing-info"></div>
+              <div class="actions-row">
+                <button id="uploadBriefBtn" class="btn secondary">Add Marketing Brief (PDF)</button>
+                <input id="briefFileInput" type="file" accept="application/pdf" hidden />
+                <button id="clearSessionBtn" class="btn secondary">Clear Session</button>
+                <button id="lookupStepCacheBtn" class="btn secondary">Check STEP Cache</button>
+                <input id="stepCacheImageInput" type="file" accept="image/*" hidden />
+                <button id="clearCacheBtn" class="btn secondary">Clear Cache</button>
+              </div>
+              <div id="stepCacheStatus" class="cache-status" hidden></div>
+            </div>
+            <div class="card">
+              <h2>Engineer Chat</h2>
+              <div id="messages" class="messages"></div>
+              <form id="chatForm" class="chat-input-row">
+                <input id="chatInput" type="text" placeholder="Describe product type, volume, material, closure, style" required />
+                <button class="btn" type="submit">Send</button>
+              </form>
+            </div>
+          </div>
+          <div class="card baseline-card">
+            <h2>Baseline Decision</h2>
+            <div class="actions-row baseline-actions-top">
+              <button id="continueBaselineBtn" class="btn" type="button" hidden>Continue With Baseline</button>
+              <button id="baselineSkipBtn" class="btn secondary" type="button" hidden>Continue Without Baseline</button>
+            </div>
+            <div id="baselineProgress" class="baseline-progress" hidden>
+              <span id="baselineProgressFill"></span>
+            </div>
+            <p id="baselineStatus">Baseline decision pending.</p>
+            <div id="baselineCandidates" class="list-grid"></div>
+            <div id="baselineMatch" class="baseline-match" hidden>
+              <strong>Selected Baseline</strong>
+              <img id="baselinePreview" alt="Baseline asset" src="" />
+              <p id="baselineSummary"></p>
+            </div>
+          </div>
+        </section>
+
+        <section id="screen2" class="screen">
+          <div class="two-col">
+            <div class="card">
+              <h2>Edit Studio</h2>
+              <div id="opProgress" class="op-progress" hidden>
+                <div id="opProgressText" class="op-progress-text">Processing...</div>
+                <div class="op-progress-bar"><span id="opProgressFill"></span></div>
+              </div>
+              <div class="preview-card">
+                <img id="mainPreview" alt="Latest concept" src="" />
+                <div id="previewPlaceholder" class="placeholder">No 2D concept yet</div>
+              </div>
+              <div class="actions-row">
+                <button id="generate2dBtn" class="btn">Generate 2D Concept</button>
+              </div>
+              <div class="thumbs-card">
+                <h3>Version History</h3>
+                <div id="thumbs" class="thumb-grid"></div>
+              </div>
+            </div>
+            <div class="card">
+              <h2>Recommended Edits (<span id="recCount">0</span>)</h2>
+              <div id="recList" class="rec-list"></div>
+              <label for="manualEdit" class="label">Manual edit instruction</label>
+              <textarea id="manualEdit" rows="4" placeholder="Example: make cap 10% taller and reduce body height by 5%"></textarea>
+              <button id="applyManualBtn" class="btn">Run Edit</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="screen3" class="screen">
+          <div class="two-col cad-two-col">
+            <div class="card cad-source-card">
+              <h2>Approved Source</h2>
+              <p id="cadApprovalStatus">No approved version yet.</p>
+              <img id="cadApprovedImagePreview" class="candidate-thumb" alt="Approved version preview" src="" hidden />
+              <button id="approveCurrentForCadBtn" class="btn secondary">Approve Current Image</button>
+            </div>
+            <div class="card cad-drawing-card">
+              <h2 style="margin: 0;">Generate CAD File</h2>
+              <div id="cadSheetProgress" class="op-progress" hidden>
+                <div id="cadSheetProgressText" class="op-progress-text">Generating CAD drawing sheet...</div>
+                <div class="op-progress-bar"><span></span></div>
+              </div>
+              <div class="actions-row">
+                <button id="generateCadSheetBtn" class="btn">Generate CAD Drawing Sheet</button>
+                <button id="proceedTo3dBtn" class="btn warning" type="button">Proceed to 3D</button>
+                <button id="openCadPromptModalBtn" class="btn secondary" type="button">Customize Spec</button>
+                <a id="downloadCadSheetBtn" class="btn secondary" href="#" download="cad_drawing_sheet.png" hidden>Download Drawing</a>
+              </div>
+              <div class="cad-sheet-stage">
+                <img id="cadSheetPreview" class="cad-sheet-preview" alt="CAD drawing sheet preview" src="" hidden />
+                <div id="cadSheetPlaceholder" class="placeholder cad-sheet-placeholder">CAD drawing will appear here</div>
+              </div>
+              <textarea id="cadSheetPrompt" rows="6" placeholder="CAD drawing prompt..." hidden></textarea>
+            </div>
+          </div>
+        </section>
+
+        <section id="screen4" class="screen">
+          <div class="two-col">
+            <div class="card">
+              <h2>Approval & 3D</h2>
+              <p id="approvalStatus">No version approved yet.</p>
+              <img id="approvedImagePreview" class="candidate-thumb" alt="Approved version preview" src="" hidden />
+              <div id="stepCadProgress" class="op-progress" hidden>
+                <div id="stepCadProgressText" class="op-progress-text">Generating CAD code and STEP file...</div>
+                <div class="op-progress-bar"><span></span></div>
+              </div>
+              <div class="actions-row">
+                <button id="generateStepCadBtn" class="btn">Generate STEP CAD</button>
+                <button id="stopStepCadBtn" class="btn secondary" type="button" hidden>Stop</button>
+                <label class="label" for="cadProviderSelect" style="margin: 0; align-self: center;">Provider</label>
+                <select id="cadProviderSelect">
+                  <option value="gemini">Gemini</option>
+                  <option value="gpt">GPT</option>
+                  <option value="claude">Claude</option>
+                </select>
+                <button id="openStepPromptModalBtn" class="btn secondary" type="button">Build CAD Prompt</button>
+                <a id="downloadCadCodeBtn" class="btn secondary" href="#" download="generated_cad.py" hidden>Download CAD Code</a>
+                <a id="downloadStepBtn" class="btn secondary" href="#" download="model.step" hidden>Download STEP</a>
+              </div>
+              <div class="cad-attempts-wrap">
+                <div id="stepCadAttemptText" class="list-meta">Attempt 0 of 10</div>
+                <div id="stepCadAttemptPills" class="attempt-pills"></div>
+                <div id="stepCadUnresolvedBanner" class="attempt-banner" hidden>Unresolved after 10 attempts</div>
+              </div>
+              <details id="cadAttemptDetails" class="cad-error-panel" hidden>
+                <summary>Error Details</summary>
+                <textarea id="cadErrorText" rows="5" readonly></textarea>
+                <div class="actions-row">
+                  <button id="copyCadErrorBtn" class="btn tiny secondary" type="button">Copy Error</button>
+                  <button id="toggleCadCodeBtn" class="btn tiny secondary" type="button">Show Code</button>
+                </div>
+                <div id="cadCodeWrap" hidden>
+                  <label for="fixCadCodeTextarea" class="label">Latest Generated Code</label>
+                  <textarea id="fixCadCodeTextarea" rows="14" readonly></textarea>
+                </div>
+              </details>
+            </div>
+            <div class="card">
+              <h2>STEP 3D Viewer</h2>
+              <div class="actions-row" style="margin-bottom: 10px;">
+                <label class="btn secondary" for="stepFileBrowseInput" style="cursor: pointer;">Browse STEP File</label>
+                <input id="stepFileBrowseInput" type="file" accept=".step,.stp" hidden />
+              </div>
+              <div id="threeDPanel" class="three-d">
+                <p id="threeDText">Approve a version, then generate STEP CAD.</p>
+                <iframe id="stepViewerFrame" title="STEP Viewer" class="step-viewer" src="/static/step_viewer.html" hidden></iframe>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="screen5" class="screen">
+          <div class="card">
+            <h2>Asset Database</h2>
+            <div class="actions-row">
+              <button id="indexAssetsBtn" class="btn">Index Asset Metadata</button>
+              <button id="refreshCatalogBtn" class="btn secondary">Refresh Catalog</button>
+            </div>
+            <div class="index-status-wrap">
+              <label for="indexStatusBox" class="label">Indexing Progress &amp; Status</label>
+              <textarea id="indexStatusBox" rows="7" readonly>Idle. Click "Index Asset Metadata" to start.</textarea>
+            </div>
+            <div id="catalogCount" class="list-meta">Total assets: 0</div>
+            <div id="assetCatalogList" class="catalog-grid"></div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+
+    <section id="intelligenceHubPage" class="hub-page" hidden>
+      <header class="hub-topbar">
+        <div>
+          <h1 class="hub-title">
+            <span class="title-ai-orb" aria-hidden="true"></span>
+            <span>AI Product Intelligence Hub</span>
+          </h1>
+          <p class="hub-subtitle">Strategic Insights Powered by AI</p>
+        </div>
+        <div class="actions-row hub-actions">
+          <button id="runIntelBtn" class="btn">Run AI Intelligence Analysis</button>
+          <button id="closeIntelBtn" class="btn secondary" type="button">Back to Workflow</button>
+        </div>
+      </header>
+
+      <div id="intelLoading" class="intel-loading" hidden>
+        <div class="intel-loader-bar"></div>
+        <p>Generating strategic intelligence...</p>
+      </div>
+
+      <main id="intelContent" class="hub-content" hidden>
+        <section class="hub-module">
+          <button class="hub-module-head" type="button" data-target="costModuleBody">
+            <span>💰 Cost Optimization Suite</span>
+            <span class="hub-toggle">Collapse</span>
+          </button>
+          <div id="costModuleBody" class="hub-module-body">
+            <div class="hub-grid-4">
+              <div class="hub-kpi">
+                <h4>Estimated Unit Cost</h4>
+                <strong id="costEstimatedUnit">$8.40</strong>
+              </div>
+              <div class="hub-kpi">
+                <h4>Target Cost</h4>
+                <strong id="costTarget">$7.00</strong>
+              </div>
+              <div class="hub-kpi">
+                <h4>Cost Gap</h4>
+                <strong id="costGap"></strong>
+              </div>
+              <div class="hub-kpi">
+                <h4>MOQ Assumption</h4>
+                <strong id="costMoq">25,000 units</strong>
+              </div>
+            </div>
+            <div id="costBreakdownGrid" class="hub-grid-4"></div>
+            <h4 class="hub-section-title">AI Recommendations</h4>
+            <div id="costRecommendations" class="hub-grid-3"></div>
+          </div>
+        </section>
+
+        <section class="hub-module">
+          <button class="hub-module-head" type="button" data-target="sentimentModuleBody">
+            <span>❤️ Sentiment & Market Intelligence</span>
+            <span class="hub-toggle">Collapse</span>
+          </button>
+          <div id="sentimentModuleBody" class="hub-module-body">
+            <div class="hub-grid-2">
+              <div class="hub-card">
+                <h4>Mock Asset Review Panel</h4>
+                <ul id="mockReviews" class="hub-review-list"></ul>
+                <div class="hub-grid-3">
+                  <div class="hub-kpi"><h4>Sentiment</h4><strong id="sentimentScore">72% Positive</strong></div>
+                  <div class="hub-kpi"><h4>Engagement</h4><strong id="engagementScore">8.2 / 10</strong></div>
+                  <div class="hub-kpi"><h4>Adoption</h4><strong id="adoptionLikelihood">High</strong></div>
+                </div>
+                <div class="sentiment-bar">
+                  <span class="neg" style="width: 16%;">Negative</span>
+                  <span class="neu" style="width: 24%;">Neutral</span>
+                  <span class="pos" style="width: 60%;">Positive</span>
+                </div>
+              </div>
+              <div class="hub-card">
+                <h4>Social Listening Simulation</h4>
+                <ul id="socialInsights" class="hub-review-list"></ul>
+                <div id="wordCloud" class="word-cloud"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </section>
+
+    <div id="keyModal" class="modal" hidden>
+      <div class="modal-card">
+        <h3>API Key</h3>
+        <input id="apiKeyPopupInput" type="password" placeholder="Enter Straive API key" />
+        <div class="actions-row">
+          <button id="saveKeyPopupBtn" class="btn tiny" type="button">Save Key</button>
+          <button id="clearKeyPopupBtn" class="btn tiny secondary" type="button">Clear</button>
+          <button id="closeKeyModalBtn" class="btn tiny secondary" type="button">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="cadPromptModal" class="modal" hidden>
+      <div class="modal-card modal-card-lg">
+        <h3>Edit Spec</h3>
+        <div class="spec-form-grid">
+          <div class="spec-field">
+            <label for="specTargetVolume">target_volume_ml</label>
+            <input id="specTargetVolume" type="text" placeholder="e.g., 50" />
+          </div>
+          <div class="spec-field">
+            <label for="specOverallHeight">Soverall_height_mm</label>
+            <input id="specOverallHeight" type="text" placeholder="e.g., 68" />
+          </div>
+          <div class="spec-field">
+            <label for="specOuterDiameter">outer_diameter_mm</label>
+            <input id="specOuterDiameter" type="text" placeholder="e.g., 52" />
+          </div>
+          <div class="spec-field">
+            <label for="specOuterWidth">outer_width_mm</label>
+            <input id="specOuterWidth" type="text" placeholder="e.g., 48" />
+          </div>
+          <div class="spec-field">
+            <label for="specOuterDepth">outer_depth_mm</label>
+            <input id="specOuterDepth" type="text" placeholder="e.g., 48" />
+          </div>
+          <div class="spec-field">
+            <label for="specWallThickness">wall_thickness_mm</label>
+            <input id="specWallThickness" type="text" placeholder="e.g., 2.2" />
+          </div>
+          <div class="spec-field">
+            <label for="specBaseThickness">base_thickness_mm</label>
+            <input id="specBaseThickness" type="text" placeholder="e.g., 3.0" />
+          </div>
+        </div>
+        <div class="actions-row">
+          <button id="saveCadPromptModalBtn" class="btn tiny" type="button">Save Spec</button>
+          <button id="closeCadPromptModalBtn" class="btn tiny secondary" type="button">Close</button>
+        </div>
+      </div>
+    </div>
+    <div id="stepPromptModal" class="modal" hidden>
+      <div class="modal-card modal-card-lg">
+        <h3>Build CAD Prompt</h3>
+        <label for="stepPromptTextarea" class="label">CadQuery Prompt</label>
+        <textarea id="stepPromptTextarea" rows="16" placeholder="Write CAD generation prompt..."></textarea>
+        <div class="actions-row">
+          <button id="saveStepPromptBtn" class="btn tiny" type="button">Save Prompt</button>
+          <button id="clearStepPromptBtn" class="btn tiny secondary" type="button">Clear Prompt</button>
+          <button id="closeStepPromptBtn" class="btn tiny secondary" type="button">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
