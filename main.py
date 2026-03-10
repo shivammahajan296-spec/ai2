@@ -1526,6 +1526,7 @@ async def _process_cad_model_generate(
     )
     state.cad_model_prompt = payload.prompt
     store.save(state)
+    _cache_cadstep_for_state(state, cad_code, code_file or "", step_file or "")
 
     return CadModelGenerateResponse(
         message=f"CAD STEP model generated from approved version v{state.approved_image_version}.",
