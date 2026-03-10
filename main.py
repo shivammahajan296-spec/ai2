@@ -41,6 +41,9 @@ from app.models import (
     ChatResponse,
     CacheClearRequest,
     CacheClearResponse,
+    StepCacheCatalogItem,
+    StepCacheCatalogResponse,
+    StepCacheLookupRequest,
     StepCacheLookupResponse,
     StepCacheMatch,
     EditRecommendationsResponse,
@@ -630,6 +633,95 @@ def _build_step_cache_matches(blob: bytes) -> list[StepCacheMatch]:
             )
         )
     return matches
+
+
+def _session_image_url_for_path(path: Path) -> str | None:
+    try:
+        rel = str(path.resolve().relative_to(SESSION_IMAGE_DIR.resolve())).replace("\\", "/")
+    except Exception:
+        return None
+    return f"/session-files/{rel}"
+
+
+def _build_session_image_hash_index() -> dict[str, dict[str, str]]:
+    index: dict[str, dict[str, str]] = {}
+    if not SESSION_IMAGE_DIR.exists():
+        return index
+    for path in SESSION_IMAGE_DIR.rglob("*"):
+        if not path.is_file():
+            continue
+        try:
+            blob = path.read_bytes()
+        except OSError:
+            continue
+        mime = _detect_mime_from_bytes(blob, mimetypes.guess_type(str(path))[0])
+        if not mime.startswith("image/"):
+            continue
+        image_hash = _sha256_bytes(blob)
+        if image_hash in index:
+            continue
+        image_url = _session_image_url_for_path(path)
+        if not image_url:
+            continue
+        index[image_hash] = {"image_url": image_url, "image_name": path.name}
+    return index
+
+
+def _read_step_cache_catalog() -> list[StepCacheCatalogItem]:
+    image_index = _build_session_image_hash_index()
+    items: list[StepCacheCatalogItem] = []
+    for cache_file in sorted(CACHE_DIR.glob("cadstep_image_*.json")):
+        try:
+            payload = json.loads(cache_file.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        provider = _normalize_cad_provider(str(payload.get("provider", "")).strip())
+        code_file = str(payload.get("code_file", "")).strip() or None
+        step_file = str(payload.get("step_file", "")).strip() or None
+        stem = cache_file.stem
+        key = stem.removeprefix("cadstep_image_")
+        image_hash = ""
+        for candidate_hash, meta in image_index.items():
+            if _sha256_text(f"{provider}::{candidate_hash}") == key:
+                image_hash = candidate_hash
+                step_exists = bool(step_file and _resolve_relative_public_file(step_file).exists())
+                if not step_exists:
+                    break
+                items.append(
+                    StepCacheCatalogItem(
+                        image_hash=image_hash,
+                        image_url=meta.get("image_url"),
+                        image_name=meta.get("image_name"),
+                        provider=provider,
+                        prompt=str(payload.get("prompt", "")).strip() or None,
+                        code_file=code_file,
+                        step_file=step_file,
+                        code_file_exists=bool(code_file and _resolve_relative_public_file(code_file).exists()),
+                        step_file_exists=step_exists,
+                    )
+                )
+                break
+        if image_hash:
+            continue
+        step_exists = bool(step_file and _resolve_relative_public_file(step_file).exists())
+        if not step_exists:
+            continue
+        items.append(
+            StepCacheCatalogItem(
+                image_hash=key,
+                image_url=None,
+                image_name=None,
+                provider=provider,
+                prompt=str(payload.get("prompt", "")).strip() or None,
+                code_file=code_file,
+                step_file=step_file,
+                code_file_exists=bool(code_file and _resolve_relative_public_file(code_file).exists()),
+                step_file_exists=step_exists,
+            )
+        )
+    return items
 
 
 @app.get("/health")
@@ -1525,32 +1617,45 @@ async def clear_cache(
 
 @app.post("/api/cache/step-lookup", response_model=StepCacheLookupResponse)
 async def lookup_step_cache(
+    payload: StepCacheLookupRequest,
     request: Request,
-    file: UploadFile = File(...),
 ) -> StepCacheLookupResponse:
     limiter.check(request, "cache-step-lookup")
-    blob = await file.read()
-    if not blob:
-        raise HTTPException(status_code=400, detail="Uploaded image is empty.")
-    mime = _detect_mime_from_bytes(blob, file.content_type)
-    if not mime.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Please upload an image file.")
+    state = store.get_or_create(payload.session_id)
+    image_path = (state.approved_image_local_path or "").strip()
+    if not image_path:
+        raise HTTPException(status_code=400, detail="Approve an image first, then generate or inspect STEP cache.")
+    p = Path(image_path)
+    if not p.exists() or not p.is_file():
+        raise HTTPException(status_code=404, detail="Approved image file is missing from the session.")
+    blob = p.read_bytes()
     image_hash = _sha256_bytes(blob)
     matches = _build_step_cache_matches(blob)
     has_any_cache_record = bool(matches)
     has_any_step_file = any(m.step_file_exists for m in matches)
     if has_any_step_file:
-        message = "STEP cache found for uploaded image."
+        message = f"STEP cache found for approved version v{state.approved_image_version or '-'}."
     elif has_any_cache_record:
-        message = "Cache record found, but STEP file is missing."
+        message = f"Cache record found for approved version v{state.approved_image_version or '-'}, but STEP file is missing."
     else:
-        message = "No STEP cache record found for uploaded image."
+        message = f"No STEP cache record found for approved version v{state.approved_image_version or '-'}."
     return StepCacheLookupResponse(
         message=message,
         image_hash=image_hash,
         matches=matches,
         has_any_cache_record=has_any_cache_record,
         has_any_step_file=has_any_step_file,
+    )
+
+
+@app.get("/api/cache/step-catalog", response_model=StepCacheCatalogResponse)
+async def step_cache_catalog(request: Request) -> StepCacheCatalogResponse:
+    limiter.check(request, "cache-step-catalog")
+    items = _read_step_cache_catalog()
+    return StepCacheCatalogResponse(
+        message="STEP cache catalog loaded.",
+        total=len(items),
+        items=items,
     )
 
 

@@ -186,6 +186,28 @@ class StepCacheLookupResponse(BaseModel):
     has_any_step_file: bool = False
 
 
+class StepCacheLookupRequest(BaseModel):
+    session_id: str = Field(min_length=1, max_length=120)
+
+
+class StepCacheCatalogItem(BaseModel):
+    image_hash: str
+    image_url: str | None = None
+    image_name: str | None = None
+    provider: str
+    prompt: str | None = None
+    code_file: str | None = None
+    step_file: str | None = None
+    code_file_exists: bool = False
+    step_file_exists: bool = False
+
+
+class StepCacheCatalogResponse(BaseModel):
+    message: str
+    total: int = 0
+    items: list[StepCacheCatalogItem] = Field(default_factory=list)
+
+
 class AssetCatalogItem(BaseModel):
     asset_rel_path: str
     filename: str

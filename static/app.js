@@ -180,7 +180,6 @@ const el = {
   uploadBriefBtn: document.getElementById("uploadBriefBtn"),
   briefFileInput: document.getElementById("briefFileInput"),
   lookupStepCacheBtn: document.getElementById("lookupStepCacheBtn"),
-  stepCacheImageInput: document.getElementById("stepCacheImageInput"),
   stepCacheStatus: document.getElementById("stepCacheStatus"),
   clearCacheBtn: document.getElementById("clearCacheBtn"),
   clearSessionBtn: document.getElementById("clearSessionBtn"),
@@ -1323,7 +1322,6 @@ async function clearSessionState() {
   el.stepCacheStatus.hidden = true;
   el.stepCacheStatus.innerHTML = "";
   el.stepCacheStatus.dataset.state = "";
-  el.stepCacheImageInput.value = "";
   state.latestImageId = null;
   state.latestImageData = null;
   addMessage("system", "Session cleared. Start with packaging requirements.");
@@ -1337,7 +1335,7 @@ async function clearServerCache() {
   addMessage("system", `${res.message} ${details}`);
 }
 
-function renderStepCacheLookupResult(res, fileName) {
+function renderStepCacheLookupResult(res) {
   const statusState = res.has_any_step_file ? "success" : res.has_any_cache_record ? "warning" : "empty";
   const matchesMarkup = (res.matches || [])
     .map((match) => {
@@ -1361,33 +1359,65 @@ function renderStepCacheLookupResult(res, fileName) {
   el.stepCacheStatus.innerHTML = `
     <div class="cache-status-head">
       <strong>${escapeHtml(res.message)}</strong>
-      <span>${escapeHtml(fileName || "Uploaded image")}</span>
+      <span>Session cache</span>
     </div>
     <div class="cache-status-meta">Image hash: ${escapeHtml(res.image_hash)}</div>
     ${matchesMarkup || '<div class="cache-status-empty">No provider cache entries matched this image.</div>'}
   `;
 }
 
-async function lookupStepCacheForImage(file) {
-  if (!file) return;
-  const type = (file.type || "").toLowerCase();
-  if (type && !type.startsWith("image/")) {
-    addMessage("system", "Please select an image file.");
+function renderStepCacheCatalog(res) {
+  const items = res.items || [];
+  el.lookupStepCacheBtn.disabled = true;
+  el.stepCacheStatus.hidden = false;
+  el.stepCacheStatus.dataset.state = items.some((item) => item.step_file_exists) ? "success" : items.length ? "warning" : "empty";
+  if (!items.length) {
+    el.stepCacheStatus.innerHTML = '<div class="cache-status-empty">No STEP cache entries found.</div>';
     return;
   }
+  const cards = items
+    .map((item) => {
+      const imageBlock = item.image_url
+        ? `<img class="cache-thumb" src="${item.image_url}" alt="${escapeHtml(item.image_name || item.provider)}" />`
+        : '<div class="cache-thumb cache-thumb-empty">Image not found</div>';
+      const stepText = item.step_file
+        ? (item.step_file_exists ? `<a href="${item.step_file}" target="_blank" rel="noopener">Open STEP</a>` : "STEP missing")
+        : "No STEP path";
+      const codeText = item.code_file
+        ? (item.code_file_exists ? `<a href="${item.code_file}" target="_blank" rel="noopener">Open Code</a>` : "Code missing")
+        : "No code path";
+      return `<div class="cache-card">
+        ${imageBlock}
+        <div class="cache-card-body">
+          <strong>${escapeHtml(item.image_name || "Cached image")}</strong>
+          <span>Provider: ${escapeHtml(item.provider)}</span>
+          <span>STEP: ${stepText}</span>
+          <span>Code: ${codeText}</span>
+          <span>Prompt: ${escapeHtml(item.prompt || "No prompt saved")}</span>
+        </div>
+      </div>`;
+    })
+    .join("");
+  el.stepCacheStatus.innerHTML = `
+    <div class="cache-status-head">
+      <strong>${escapeHtml(res.message)}</strong>
+      <span>${items.length} cached item${items.length === 1 ? "" : "s"}</span>
+    </div>
+    <div class="cache-grid">${cards}</div>
+  `;
+}
+
+async function loadStepCacheCatalog() {
   el.lookupStepCacheBtn.disabled = true;
   el.stepCacheStatus.hidden = false;
   el.stepCacheStatus.dataset.state = "";
-  el.stepCacheStatus.innerHTML = "<div class=\"cache-status-empty\">Checking STEP cache for uploaded image...</div>";
+  el.stepCacheStatus.innerHTML = "<div class=\"cache-status-empty\">Loading STEP cache...</div>";
   try {
-    const formData = new FormData();
-    formData.append("file", file);
-    const res = await apiPostForm("/api/cache/step-lookup", formData);
-    renderStepCacheLookupResult(res, file.name);
-    addMessage("system", `${res.message} File: ${file.name}`);
+    const res = await apiGet("/api/cache/step-catalog");
+    renderStepCacheCatalog(res);
+    addMessage("system", res.message);
   } finally {
     el.lookupStepCacheBtn.disabled = false;
-    el.stepCacheImageInput.value = "";
   }
 }
 
@@ -1516,21 +1546,15 @@ el.clearSessionBtn.addEventListener("click", async () => {
   }
 });
 
-el.lookupStepCacheBtn.addEventListener("click", () => {
-  el.stepCacheImageInput.click();
-});
-
-el.stepCacheImageInput.addEventListener("change", async (e) => {
-  const file = e.target.files && e.target.files[0];
+el.lookupStepCacheBtn.addEventListener("click", async () => {
   try {
-    await lookupStepCacheForImage(file);
+    await loadStepCacheCatalog();
   } catch (err) {
     el.stepCacheStatus.dataset.state = "warning";
     el.stepCacheStatus.hidden = false;
     el.stepCacheStatus.innerHTML = `<div class="cache-status-empty">${escapeHtml(err.message)}</div>`;
     addMessage("system", err.message);
     el.lookupStepCacheBtn.disabled = false;
-    el.stepCacheImageInput.value = "";
   }
 });
 
