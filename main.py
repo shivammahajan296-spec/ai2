@@ -567,15 +567,18 @@ def _latest_session_image_for_session(session_id: str) -> tuple[str | None, str 
         for path in session_dir.iterdir():
             if not path.is_file():
                 continue
-            if not re.fullmatch(r"v\d+\.(png|jpg|jpeg|webp|gif|bmp|svg)", path.name, flags=re.IGNORECASE):
+            mime = mimetypes.guess_type(str(path))[0] or ""
+            if not (mime.startswith("image/") or re.search(r"\.(png|jpg|jpeg|webp|gif|bmp|svg)$", path.name, flags=re.IGNORECASE)):
                 continue
             candidates.append(path.resolve())
     if not candidates:
         return None, None
-    def _version_key(path: Path) -> int:
+    def _image_rank(path: Path) -> tuple[int, int, float]:
         m = re.match(r"v(\d+)\.", path.name, flags=re.IGNORECASE)
-        return int(m.group(1)) if m else 0
-    chosen = max(candidates, key=lambda p: (_version_key(p), p.stat().st_mtime))
+        version = int(m.group(1)) if m else 0
+        is_primary_version = 1 if m else 0
+        return (is_primary_version, version, path.stat().st_mtime)
+    chosen = max(candidates, key=_image_rank)
     return _public_session_url_from_path(chosen), chosen.name
 
 
