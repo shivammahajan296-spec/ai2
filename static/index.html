@@ -57,7 +57,6 @@
                 <button id="lookupStepCacheBtn" class="btn secondary" type="button">View Cache</button>
                 <button id="clearCacheBtn" class="btn secondary">Clear Cache</button>
               </div>
-              <div id="stepCacheStatus" class="cache-status" hidden></div>
             </div>
             <div class="card">
               <h2>Engineer Chat</h2>
@@ -300,6 +299,26 @@
             </div>
           </div>
         </section>
+      </main>
+    </section>
+
+    <section id="cacheViewerPage" class="hub-page" hidden>
+      <header class="hub-topbar">
+        <div>
+          <h1 class="hub-title">
+            <span class="title-ai-orb" aria-hidden="true"></span>
+            <span>STEP Cache Viewer</span>
+          </h1>
+          <p class="hub-subtitle">Images with generated STEP output</p>
+        </div>
+        <div class="actions-row hub-actions">
+          <button id="refreshCacheViewerBtn" class="btn" type="button">Refresh Cache</button>
+          <button id="closeCacheViewerBtn" class="btn secondary" type="button">Back to Workflow</button>
+        </div>
+      </header>
+
+      <main class="hub-content">
+        <div id="stepCacheStatus" class="cache-status cache-status-page"></div>
       </main>
     </section>
 

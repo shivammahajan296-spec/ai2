@@ -189,6 +189,9 @@ const el = {
   refreshCatalogBtn: document.getElementById("refreshCatalogBtn"),
   catalogCount: document.getElementById("catalogCount"),
   assetCatalogList: document.getElementById("assetCatalogList"),
+  cacheViewerPage: document.getElementById("cacheViewerPage"),
+  refreshCacheViewerBtn: document.getElementById("refreshCacheViewerBtn"),
+  closeCacheViewerBtn: document.getElementById("closeCacheViewerBtn"),
   intelligenceHubPage: document.getElementById("intelligenceHubPage"),
   runIntelBtn: document.getElementById("runIntelBtn"),
   closeIntelBtn: document.getElementById("closeIntelBtn"),
@@ -1368,7 +1371,6 @@ function renderStepCacheLookupResult(res) {
 
 function renderStepCacheCatalog(res) {
   const items = res.items || [];
-  el.lookupStepCacheBtn.disabled = true;
   el.stepCacheStatus.hidden = false;
   el.stepCacheStatus.dataset.state = items.some((item) => item.step_file_exists) ? "success" : items.length ? "warning" : "empty";
   if (!items.length) {
@@ -1407,8 +1409,8 @@ function renderStepCacheCatalog(res) {
 }
 
 async function loadStepCacheCatalog() {
+  el.cacheViewerPage.hidden = false;
   el.lookupStepCacheBtn.disabled = true;
-  el.stepCacheStatus.hidden = false;
   el.stepCacheStatus.dataset.state = "";
   el.stepCacheStatus.innerHTML = "<div class=\"cache-status-empty\">Loading STEP cache...</div>";
   try {
@@ -1666,6 +1668,18 @@ el.closeIntelBtn.addEventListener("click", () => {
   el.intelligenceHubPage.hidden = true;
 });
 
+el.refreshCacheViewerBtn.addEventListener("click", async () => {
+  try {
+    await loadStepCacheCatalog();
+  } catch (err) {
+    addMessage("system", err.message);
+  }
+});
+
+el.closeCacheViewerBtn.addEventListener("click", () => {
+  el.cacheViewerPage.hidden = true;
+});
+
 el.runIntelBtn.addEventListener("click", async () => {
   el.runIntelBtn.disabled = true;
   el.intelContent.hidden = true;
@@ -1690,6 +1704,7 @@ document.querySelectorAll(".hub-module-head").forEach((btn) => {
 
 (async function init() {
   el.keyModal.hidden = true;
+  el.cacheViewerPage.hidden = true;
   el.intelligenceHubPage.hidden = true;
   resetCadAttemptsUi();
   hideCadExecutionIssue();
