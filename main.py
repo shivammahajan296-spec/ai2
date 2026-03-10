@@ -557,6 +557,26 @@ def _public_session_url_from_path(path: Path) -> str | None:
     return None
 
 
+def _public_asset_url_from_path(path: Path) -> str | None:
+    path_resolved = path.resolve()
+    assets_root = Path(settings.assets_dir).resolve()
+    try:
+        rel = str(path_resolved.relative_to(assets_root)).replace("\\", "/")
+    except Exception:
+        return None
+    return f"/asset-files/{rel}"
+
+
+def _public_image_url_from_local_path(path_value: str | None) -> str | None:
+    raw = (path_value or "").strip()
+    if not raw:
+        return None
+    path = Path(raw)
+    if not path.exists() or not path.is_file():
+        return None
+    return _public_session_url_from_path(path) or _public_asset_url_from_path(path)
+
+
 def _latest_session_image_for_session(session_id: str) -> tuple[str | None, str | None]:
     safe_session = _safe_session_key(session_id)
     candidates: list[Path] = []
@@ -677,6 +697,7 @@ def _cache_cadstep_for_state(state, cad_code: str, code_file: str, step_file: st
     p = Path(image_path)
     if not p.exists() or not p.is_file():
         return
+    image_url = _public_image_url_from_local_path(image_path)
     approved_blob = p.read_bytes()
     normalized_prompt = re.sub(r"\s+", " ", prompt)
     cad_cache_key = _sha256_text(f"{provider}::{_sha256_bytes(approved_blob)}::{normalized_prompt}")
@@ -688,6 +709,8 @@ def _cache_cadstep_for_state(state, cad_code: str, code_file: str, step_file: st
             "code_file": code_file,
             "step_file": step_file,
             "provider": provider,
+            "image_url": image_url,
+            "image_name": p.name,
         },
     )
     # Also persist an image-level cache entry so this approved image always has a STEP cache record.
@@ -701,6 +724,8 @@ def _cache_cadstep_for_state(state, cad_code: str, code_file: str, step_file: st
             "step_file": step_file,
             "prompt": prompt,
             "provider": provider,
+            "image_url": image_url,
+            "image_name": p.name,
         },
     )
 
@@ -801,8 +826,8 @@ def _read_step_cache_catalog() -> list[StepCacheCatalogItem]:
                 items.append(
                     StepCacheCatalogItem(
                         image_hash=image_hash,
-                        image_url=meta.get("image_url"),
-                        image_name=meta.get("image_name"),
+                        image_url=str(payload.get("image_url", "")).strip() or meta.get("image_url"),
+                        image_name=str(payload.get("image_name", "")).strip() or meta.get("image_name"),
                         provider=provider,
                         prompt=str(payload.get("prompt", "")).strip() or None,
                         code_file=code_file,
@@ -820,8 +845,8 @@ def _read_step_cache_catalog() -> list[StepCacheCatalogItem]:
         items.append(
             StepCacheCatalogItem(
                 image_hash=key,
-                image_url=None,
-                image_name=None,
+                image_url=str(payload.get("image_url", "")).strip() or None,
+                image_name=str(payload.get("image_name", "")).strip() or None,
                 provider=provider,
                 prompt=str(payload.get("prompt", "")).strip() or None,
                 code_file=code_file,

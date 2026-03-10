@@ -1393,7 +1393,6 @@ function renderStepCacheCatalog(res) {
           <span>Provider: ${escapeHtml(item.provider)}</span>
           <span>STEP: ${stepText}</span>
           <span>Code: ${codeText}</span>
-          <span>Prompt: ${escapeHtml(item.prompt || "No prompt saved")}</span>
         </div>
       </div>`;
     })
