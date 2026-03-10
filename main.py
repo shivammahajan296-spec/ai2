@@ -535,6 +535,50 @@ def _public_file_exists(url_path: str | None) -> bool:
     return _resolve_relative_public_file(raw).exists()
 
 
+def _public_step_url_from_path(path: Path) -> str | None:
+    path_resolved = path.resolve()
+    for root in _all_step_run_dirs():
+        try:
+            rel = str(path_resolved.relative_to(root)).replace("\\", "/")
+        except Exception:
+            continue
+        return f"/step-files/{rel}"
+    return None
+
+
+def _public_session_url_from_path(path: Path) -> str | None:
+    path_resolved = path.resolve()
+    for root in _all_session_image_dirs():
+        try:
+            rel = str(path_resolved.relative_to(root)).replace("\\", "/")
+        except Exception:
+            continue
+        return f"/session-files/{rel}"
+    return None
+
+
+def _latest_session_image_for_session(session_id: str) -> tuple[str | None, str | None]:
+    safe_session = _safe_session_key(session_id)
+    candidates: list[Path] = []
+    for root in _all_session_image_dirs():
+        session_dir = root / safe_session
+        if not session_dir.exists() or not session_dir.is_dir():
+            continue
+        for path in session_dir.iterdir():
+            if not path.is_file():
+                continue
+            if not re.fullmatch(r"v\d+\.(png|jpg|jpeg|webp|gif|bmp|svg)", path.name, flags=re.IGNORECASE):
+                continue
+            candidates.append(path.resolve())
+    if not candidates:
+        return None, None
+    def _version_key(path: Path) -> int:
+        m = re.match(r"v(\d+)\.", path.name, flags=re.IGNORECASE)
+        return int(m.group(1)) if m else 0
+    chosen = max(candidates, key=lambda p: (_version_key(p), p.stat().st_mtime))
+    return _public_session_url_from_path(chosen), chosen.name
+
+
 def _run_generated_cad_script(script_text: str, session_id: str) -> tuple[str, str]:
     run_dir = CAD_RUN_DIR / f"{_safe_session_key(session_id)}-{uuid.uuid4().hex[:8]}"
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -779,7 +823,46 @@ def _read_step_cache_catalog() -> list[StepCacheCatalogItem]:
                 step_file_exists=step_exists,
             )
         )
-    return items
+    if items:
+        return items
+
+    fallback_items: list[StepCacheCatalogItem] = []
+    seen_step_paths: set[str] = set()
+    for root in _all_step_run_dirs():
+        if not root.exists():
+            continue
+        for run_dir in sorted((p for p in root.iterdir() if p.is_dir()), key=lambda p: p.stat().st_mtime, reverse=True):
+            step_candidates = sorted(
+                [*run_dir.rglob("*.step"), *run_dir.rglob("*.stp")],
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            if not step_candidates:
+                continue
+            step_path = step_candidates[0].resolve()
+            step_url = _public_step_url_from_path(step_path)
+            if not step_url or step_url in seen_step_paths:
+                continue
+            seen_step_paths.add(step_url)
+            code_candidates = sorted(run_dir.rglob("generated_cad.py"), key=lambda p: p.stat().st_mtime, reverse=True)
+            code_url = _public_step_url_from_path(code_candidates[0].resolve()) if code_candidates else None
+            session_match = re.match(r"^(?P<session>.+)-[0-9a-f]{8}$", run_dir.name)
+            session_id = session_match.group("session") if session_match else run_dir.name
+            image_url, image_name = _latest_session_image_for_session(session_id)
+            fallback_items.append(
+                StepCacheCatalogItem(
+                    image_hash=session_id,
+                    image_url=image_url,
+                    image_name=image_name or session_id,
+                    provider="filesystem",
+                    prompt=None,
+                    code_file=code_url,
+                    step_file=step_url,
+                    code_file_exists=bool(code_url),
+                    step_file_exists=True,
+                )
+            )
+    return fallback_items
 
 
 @app.get("/health")
