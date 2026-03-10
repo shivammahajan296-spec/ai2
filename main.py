@@ -126,6 +126,9 @@ SESSION_IMAGE_DIR = Path(settings.session_images_dir)
 SESSION_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 CAD_RUN_DIR = Path("tmp_runtime/stepfiles")
 CAD_RUN_DIR.mkdir(parents=True, exist_ok=True)
+LEGACY_CACHE_DIR = Path("cache")
+LEGACY_SESSION_IMAGE_DIR = Path("session_images")
+LEGACY_CAD_RUN_DIR = LEGACY_SESSION_IMAGE_DIR / "cad_runs"
 CAD_LLM_SYSTEM_PROMPT = (
     "Role: You are a Senior Python CAD Developer and Mechanical Engineer specializing in the cadquery library cadquery==2.5.2\n\n"
     "Task: Analyze the attached image and generate a robust, executable Python script using cadquery to create a parametric 3D model of the object. The output must be a valid STEP file.\n\n"
@@ -492,6 +495,46 @@ def _resolve_relative_public_file(url_path: str) -> Path:
     return (SESSION_IMAGE_DIR / rel).resolve()
 
 
+def _all_cache_dirs() -> list[Path]:
+    dirs: list[Path] = []
+    for path in (CACHE_DIR, LEGACY_CACHE_DIR):
+        resolved = path.resolve()
+        if resolved not in dirs:
+            dirs.append(resolved)
+    return dirs
+
+
+def _all_session_image_dirs() -> list[Path]:
+    dirs: list[Path] = []
+    for path in (SESSION_IMAGE_DIR, LEGACY_SESSION_IMAGE_DIR):
+        resolved = path.resolve()
+        if resolved not in dirs:
+            dirs.append(resolved)
+    return dirs
+
+
+def _all_step_run_dirs() -> list[Path]:
+    dirs: list[Path] = []
+    for path in (CAD_RUN_DIR, LEGACY_CAD_RUN_DIR):
+        resolved = path.resolve()
+        if resolved not in dirs:
+            dirs.append(resolved)
+    return dirs
+
+
+def _public_file_exists(url_path: str | None) -> bool:
+    raw = (url_path or "").strip()
+    if not raw:
+        return False
+    if raw.startswith("/step-files/"):
+        rel = raw.removeprefix("/step-files/")
+        return any((root / rel).resolve().exists() for root in _all_step_run_dirs())
+    if raw.startswith("/session-files/"):
+        rel = raw.removeprefix("/session-files/")
+        return any((root / rel).resolve().exists() for root in _all_session_image_dirs())
+    return _resolve_relative_public_file(raw).exists()
+
+
 def _run_generated_cad_script(script_text: str, session_id: str) -> tuple[str, str]:
     run_dir = CAD_RUN_DIR / f"{_safe_session_key(session_id)}-{uuid.uuid4().hex[:8]}"
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -620,8 +663,8 @@ def _build_step_cache_matches(blob: bytes) -> list[StepCacheMatch]:
             continue
         code_file = str(payload.get("code_file", "")).strip() or None
         step_file = str(payload.get("step_file", "")).strip() or None
-        code_exists = bool(code_file and _resolve_relative_public_file(code_file).exists())
-        step_exists = bool(step_file and _resolve_relative_public_file(step_file).exists())
+        code_exists = _public_file_exists(code_file)
+        step_exists = _public_file_exists(step_file)
         matches.append(
             StepCacheMatch(
                 provider=provider,
@@ -636,41 +679,56 @@ def _build_step_cache_matches(blob: bytes) -> list[StepCacheMatch]:
 
 
 def _session_image_url_for_path(path: Path) -> str | None:
-    try:
-        rel = str(path.resolve().relative_to(SESSION_IMAGE_DIR.resolve())).replace("\\", "/")
-    except Exception:
-        return None
-    return f"/session-files/{rel}"
+    path_resolved = path.resolve()
+    for root in _all_session_image_dirs():
+        try:
+            rel = str(path_resolved.relative_to(root)).replace("\\", "/")
+        except Exception:
+            continue
+        return f"/session-files/{rel}"
+    return None
 
 
 def _build_session_image_hash_index() -> dict[str, dict[str, str]]:
     index: dict[str, dict[str, str]] = {}
-    if not SESSION_IMAGE_DIR.exists():
-        return index
-    for path in SESSION_IMAGE_DIR.rglob("*"):
-        if not path.is_file():
+    for root in _all_session_image_dirs():
+        if not root.exists():
             continue
-        try:
-            blob = path.read_bytes()
-        except OSError:
-            continue
-        mime = _detect_mime_from_bytes(blob, mimetypes.guess_type(str(path))[0])
-        if not mime.startswith("image/"):
-            continue
-        image_hash = _sha256_bytes(blob)
-        if image_hash in index:
-            continue
-        image_url = _session_image_url_for_path(path)
-        if not image_url:
-            continue
-        index[image_hash] = {"image_url": image_url, "image_name": path.name}
+        for path in root.rglob("*"):
+            if not path.is_file():
+                continue
+            try:
+                blob = path.read_bytes()
+            except OSError:
+                continue
+            mime = _detect_mime_from_bytes(blob, mimetypes.guess_type(str(path))[0])
+            if not mime.startswith("image/"):
+                continue
+            image_hash = _sha256_bytes(blob)
+            if image_hash in index:
+                continue
+            image_url = _session_image_url_for_path(path)
+            if not image_url:
+                continue
+            index[image_hash] = {"image_url": image_url, "image_name": path.name}
     return index
 
 
 def _read_step_cache_catalog() -> list[StepCacheCatalogItem]:
     image_index = _build_session_image_hash_index()
     items: list[StepCacheCatalogItem] = []
-    for cache_file in sorted(CACHE_DIR.glob("cadstep_image_*.json")):
+    seen_cache_files: set[Path] = set()
+    cache_files: list[Path] = []
+    for root in _all_cache_dirs():
+        if not root.exists():
+            continue
+        for path in sorted(root.glob("cadstep_image_*.json")):
+            resolved = path.resolve()
+            if resolved in seen_cache_files:
+                continue
+            seen_cache_files.add(resolved)
+            cache_files.append(resolved)
+    for cache_file in cache_files:
         try:
             payload = json.loads(cache_file.read_text(encoding="utf-8"))
         except Exception:
@@ -686,7 +744,7 @@ def _read_step_cache_catalog() -> list[StepCacheCatalogItem]:
         for candidate_hash, meta in image_index.items():
             if _sha256_text(f"{provider}::{candidate_hash}") == key:
                 image_hash = candidate_hash
-                step_exists = bool(step_file and _resolve_relative_public_file(step_file).exists())
+                step_exists = _public_file_exists(step_file)
                 if not step_exists:
                     break
                 items.append(
@@ -698,14 +756,14 @@ def _read_step_cache_catalog() -> list[StepCacheCatalogItem]:
                         prompt=str(payload.get("prompt", "")).strip() or None,
                         code_file=code_file,
                         step_file=step_file,
-                        code_file_exists=bool(code_file and _resolve_relative_public_file(code_file).exists()),
+                        code_file_exists=_public_file_exists(code_file),
                         step_file_exists=step_exists,
                     )
                 )
                 break
         if image_hash:
             continue
-        step_exists = bool(step_file and _resolve_relative_public_file(step_file).exists())
+        step_exists = _public_file_exists(step_file)
         if not step_exists:
             continue
         items.append(
@@ -717,7 +775,7 @@ def _read_step_cache_catalog() -> list[StepCacheCatalogItem]:
                 prompt=str(payload.get("prompt", "")).strip() or None,
                 code_file=code_file,
                 step_file=step_file,
-                code_file_exists=bool(code_file and _resolve_relative_public_file(code_file).exists()),
+                code_file_exists=_public_file_exists(code_file),
                 step_file_exists=step_exists,
             )
         )
