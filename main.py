@@ -574,10 +574,14 @@ def _latest_session_image_for_session(session_id: str) -> tuple[str | None, str 
     if not candidates:
         return None, None
     def _image_rank(path: Path) -> tuple[int, int, float]:
-        m = re.match(r"v(\d+)\.", path.name, flags=re.IGNORECASE)
+        name = path.name
+        lower_name = name.lower()
+        m = re.match(r"v(\d+)\.", name, flags=re.IGNORECASE)
         version = int(m.group(1)) if m else 0
         is_primary_version = 1 if m else 0
-        return (is_primary_version, version, path.stat().st_mtime)
+        is_cad_sheet = 1 if lower_name.startswith("cad_sheet_") else 0
+        # Prefer product/version images first; only use CAD sheet images as fallback.
+        return (1 - is_cad_sheet, is_primary_version, version, path.stat().st_mtime)
     chosen = max(candidates, key=_image_rank)
     return _public_session_url_from_path(chosen), chosen.name
 
